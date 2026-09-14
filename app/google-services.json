@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "72815265035",
+    "project_id": "yap-todo-alpcan",
+    "storage_bucket": "yap-todo-alpcan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:72815265035:android:a2b2b819514c1887964e0e",
+        "android_client_info": {
+          "package_name": "com.alpcan.yap"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "72815265035-od3ob479j1qta67d89oj8imdpfiokge0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alpcan.yap",
+            "certificate_hash": "50764250aa9f486f6514f7cf4a6813328671bf7c"
+          }
+        },
+        {
+          "client_id": "72815265035-vv83e4c6mdfq4o5j2169i85naunicn6s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDL_F3wOZrhOSMxIOTNZVCKKG0WeCzxT7A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "72815265035-vv83e4c6mdfq4o5j2169i85naunicn6s.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
