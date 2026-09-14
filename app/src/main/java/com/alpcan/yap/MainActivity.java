@@ -38,6 +38,7 @@ import androidx.credentials.exceptions.GetCredentialException;
 
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
+import com.google.firebase.FirebaseApp;
 import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
@@ -64,22 +65,86 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        configureSystemBars();
-        auth = FirebaseAuth.getInstance();
-        credentialManager = CredentialManager.create(this);
         mainExecutor = command -> runOnUiThread(command);
 
-        if (auth.getCurrentUser() != null) {
-            showApp();
-        } else {
-            showAuthScreen();
+        try {
+            configureSystemBars();
+        } catch (Throwable ignored) {
+            getWindow().setStatusBarColor(BG);
+            getWindow().setNavigationBarColor(BG);
         }
+
+        try {
+            FirebaseApp firebaseApp = FirebaseApp.initializeApp(this);
+            if (firebaseApp == null) {
+                showStartupRecovery("Firebase başlatılamadı. Misafir olarak devam edebilirsin.");
+                return;
+            }
+            auth = FirebaseAuth.getInstance();
+        } catch (Throwable error) {
+            showStartupRecovery("Giriş servisi başlatılamadı. Misafir olarak devam edebilirsin.");
+            return;
+        }
+
+        try {
+            if (auth.getCurrentUser() != null) showApp();
+            else showAuthScreen();
+        } catch (Throwable error) {
+            showStartupRecovery("Uygulama açılırken giriş ekranında bir sorun oluştu.");
+        }
+    }
+
+    private void showStartupRecovery(String message) {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(24), dp(48), dp(24), dp(48));
+        root.setBackgroundColor(BG);
+
+        TextView logo = new TextView(this);
+        logo.setText("Yap!");
+        logo.setTextColor(Color.WHITE);
+        logo.setTextSize(42);
+        logo.setGravity(Gravity.CENTER);
+        logo.setTypeface(null, android.graphics.Typeface.BOLD);
+        root.addView(logo, matchWrap(dp(18)));
+
+        TextView info = new TextView(this);
+        info.setText(message);
+        info.setTextColor(MUTED);
+        info.setTextSize(15);
+        info.setGravity(Gravity.CENTER);
+        root.addView(info, matchWrap(dp(18)));
+
+        Button guest = primaryButton("Misafir olarak devam et");
+        guest.setOnClickListener(v -> {
+            try {
+                showApp();
+            } catch (Throwable error) {
+                showFatalFallback("Uygulama arayüzü açılamadı.");
+            }
+        });
+        root.addView(guest, matchWrap(0));
+        setContentView(root);
+    }
+
+    private void showFatalFallback(String message) {
+        TextView view = new TextView(this);
+        view.setText("Yap!\n\n" + message + "\n\nLütfen uygulamayı güncelle.");
+        view.setTextColor(Color.WHITE);
+        view.setTextSize(18);
+        view.setGravity(Gravity.CENTER);
+        view.setPadding(dp(28), dp(48), dp(28), dp(48));
+        view.setBackgroundColor(BG);
+        setContentView(view);
     }
 
     private void showAuthScreen() {
         if (web != null) {
-            web.stopLoading();
-            web.destroy();
+            try {
+                web.stopLoading();
+                web.destroy();
+            } catch (Throwable ignored) {}
             web = null;
         }
 
@@ -160,6 +225,10 @@ public class MainActivity extends Activity {
     }
 
     private void emailLogin(boolean register) {
+        if (auth == null) {
+            showMessage("Giriş servisi hazır değil. Misafir olarak devam edebilirsin.");
+            return;
+        }
         String email = emailInput.getText().toString().trim();
         String password = passwordInput.getText().toString();
         if (!email.contains("@")) {
@@ -187,6 +256,10 @@ public class MainActivity extends Activity {
     }
 
     private void resetPassword() {
+        if (auth == null) {
+            showMessage("Giriş servisi hazır değil.");
+            return;
+        }
         String email = emailInput.getText().toString().trim();
         if (!email.contains("@")) {
             showMessage("Önce e-posta adresini yaz.");
@@ -199,7 +272,14 @@ public class MainActivity extends Activity {
     }
 
     private void startGoogleSignIn() {
+        if (auth == null) {
+            showMessage("Giriş servisi hazır değil.");
+            return;
+        }
         try {
+            if (credentialManager == null) {
+                credentialManager = CredentialManager.create(this);
+            }
             GetGoogleIdOption googleOption = new GetGoogleIdOption.Builder()
                     .setFilterByAuthorizedAccounts(false)
                     .setServerClientId(getString(R.string.default_web_client_id))
@@ -225,8 +305,8 @@ public class MainActivity extends Activity {
                         }
                     }
             );
-        } catch (Exception e) {
-            showMessage("Google girişi başlatılamadı.");
+        } catch (Throwable e) {
+            showMessage("Google girişi başlatılamadı. Lütfen tekrar dene.");
         }
     }
 
@@ -249,42 +329,48 @@ public class MainActivity extends Activity {
                 if (task.isSuccessful()) showApp();
                 else showMessage(authError(task.getException()));
             });
-        } catch (Exception e) {
+        } catch (Throwable e) {
             showMessage("Google hesabı doğrulanamadı. Lütfen tekrar dene.");
         }
     }
 
     private void showApp() {
-        web = new WebView(this);
-        WebSettings settings = web.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(false);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-
-        web.setBackgroundColor(BG);
-        web.setWebChromeClient(new WebChromeClient());
-        web.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                return handleAppUrl(request.getUrl());
+        try {
+            web = new WebView(this);
+            WebSettings settings = web.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(false);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(false);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
             }
 
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                return handleAppUrl(Uri.parse(url));
-            }
+            web.setBackgroundColor(BG);
+            web.setWebChromeClient(new WebChromeClient());
+            web.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    return handleAppUrl(request.getUrl());
+                }
 
-            @Override
-            public void onPageFinished(WebView view, String url) {
-                injectCurrentUser();
-            }
-        });
-        applySystemInsets(web);
-        setContentView(web);
-        web.loadUrl("file:///android_asset/index.html");
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                    return handleAppUrl(Uri.parse(url));
+                }
+
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    injectCurrentUser();
+                }
+            });
+            applySystemInsets(web);
+            setContentView(web);
+            web.loadUrl("file:///android_asset/index.html");
+        } catch (Throwable error) {
+            showFatalFallback("Uygulama arayüzü açılamadı.");
+        }
     }
 
     private boolean handleAppUrl(Uri uri) {
@@ -302,20 +388,29 @@ public class MainActivity extends Activity {
     }
 
     private void signOut() {
-        auth.signOut();
-        credentialManager.clearCredentialStateAsync(
-                new ClearCredentialStateRequest(),
-                new CancellationSignal(),
-                mainExecutor,
-                new CredentialManagerCallback<Void, ClearCredentialException>() {
-                    @Override public void onResult(Void result) { showAuthScreen(); }
-                    @Override public void onError(@NonNull ClearCredentialException e) { showAuthScreen(); }
-                }
-        );
+        if (auth != null) auth.signOut();
+        try {
+            if (credentialManager == null) {
+                showAuthScreen();
+                return;
+            }
+            credentialManager.clearCredentialStateAsync(
+                    new ClearCredentialStateRequest(),
+                    new CancellationSignal(),
+                    mainExecutor,
+                    new CredentialManagerCallback<Void, ClearCredentialException>() {
+                        @Override public void onResult(Void result) { showAuthScreen(); }
+                        @Override public void onError(@NonNull ClearCredentialException e) { showAuthScreen(); }
+                    }
+            );
+        } catch (Throwable ignored) {
+            showAuthScreen();
+        }
     }
 
     private void injectCurrentUser() {
-        FirebaseUser user = auth.getCurrentUser();
+        if (web == null) return;
+        FirebaseUser user = auth == null ? null : auth.getCurrentUser();
         JSONObject data = new JSONObject();
         try {
             data.put("loggedIn", user != null);
@@ -323,7 +418,9 @@ public class MainActivity extends Activity {
             data.put("name", user != null && user.getDisplayName() != null ? user.getDisplayName() : "");
             data.put("photo", user != null && user.getPhotoUrl() != null ? user.getPhotoUrl().toString() : "");
         } catch (Exception ignored) {}
-        web.evaluateJavascript("window.setNativeUser&&window.setNativeUser(" + data + ")", null);
+        try {
+            web.evaluateJavascript("window.setNativeUser&&window.setNativeUser(" + data + ")", null);
+        } catch (Throwable ignored) {}
     }
 
     private void showMessage(String text) {
@@ -435,7 +532,9 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (web != null) web.destroy();
+        try {
+            if (web != null) web.destroy();
+        } catch (Throwable ignored) {}
         super.onDestroy();
     }
 }
