@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function member(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid));
+    }
+    function memberDoc(orgId) {
+      return get(/databases/$(database)/documents/orgs/$(orgId)/members/$(request.auth.uid)).data;
+    }
+    function manager(orgId) {
+      return member(orgId) && (memberDoc(orgId).level == 'owner' || memberDoc(orgId).level == 'admin');
+    }
+
+    match /users/{uid} {
+      allow read, create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+
+    match /orgs/{orgId} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if member(orgId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if manager(orgId);
+
+      match /members/{uid} {
+        allow read: if member(orgId);
+        allow create: if manager(orgId)
+          || (signedIn() && request.auth.uid == uid
+              && get(/databases/$(database)/documents/orgs/$(orgId)).data.ownerUid == request.auth.uid
+              && request.resource.data.level == 'owner')
+          || (signedIn()
+              && request.auth.uid == uid
+              && request.resource.data.inviteToken is string
+              && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken))
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.orgId == orgId
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.email == request.auth.token.email);
+        allow update, delete: if manager(orgId);
+      }
+
+      match /roles/{roleId} {
+        allow read: if member(orgId);
+        allow create, update, delete: if manager(orgId);
+      }
+
+      match /tasks/{taskId} {
+        allow read: if manager(orgId) || (member(orgId) && resource.data.assigneeUid == request.auth.uid);
+        allow create, update, delete: if manager(orgId);
+
+        match /messages/{messageId} {
+          function taskData() {
+            return get(/databases/$(database)/documents/orgs/$(orgId)/tasks/$(taskId)).data;
+          }
+          allow read: if manager(orgId) || (member(orgId) && taskData().assigneeUid == request.auth.uid);
+          allow create: if (manager(orgId) || (member(orgId) && taskData().assigneeUid == request.auth.uid))
+                        && request.resource.data.senderUid == request.auth.uid;
+          allow update, delete: if false;
+        }
+      }
+    }
+
+    match /invites/{token} {
+      allow create: if signedIn() && manager(request.resource.data.orgId);
+      allow read: if signedIn() && (manager(resource.data.orgId) || resource.data.email == request.auth.token.email);
+      allow update: if signedIn() && (manager(resource.data.orgId) || resource.data.email == request.auth.token.email);
+      allow delete: if signedIn() && manager(resource.data.orgId);
+    }
+  }
+}
