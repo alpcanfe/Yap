@@ -157,9 +157,10 @@ public final class InviteCodeService {
                 + "Davet kodun: " + display(c) + "\n"
                 + "Davet edilen hesap: " + email + "\n"
                 + "Rol: " + role + "\n\n"
-                + "Yap! uygulamasını aç, davet kodunu giriş ekranına yaz ve bu e-posta hesabıyla giriş yap. Kod 7 gün geçerlidir.";
+                + "Yap! uygulamasında bu e-posta hesabıyla giriş yap. Ardından Profil bölümünü açıp davet kodunu gir ve 'Ekibe katıl' düğmesine dokun. Kod 7 gün geçerlidir.";
         Intent send = new Intent(Intent.ACTION_SEND);
         send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_SUBJECT, "Yap! ekip daveti");
         send.putExtra(Intent.EXTRA_TEXT, text);
         activity.startActivity(Intent.createChooser(send, "Davet kodunu paylaş"));
     }
