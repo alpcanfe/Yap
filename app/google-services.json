@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "72815265035-eimo9u9l11fac9ki6si0nlbo3dpf506s.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alpcan.yap",
+            "certificate_hash": "07d0a49978cbab1dc7bbf5678e468ebf54609020"
+          }
+        },
+        {
           "client_id": "72815265035-od3ob479j1qta67d89oj8imdpfiokge0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
