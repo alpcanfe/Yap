@@ -20,7 +20,7 @@ service cloud.firestore {
     match /orgs/{orgId} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
       allow read: if member(orgId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
-      allow update, delete: if manager(orgId);
+      allow update, delete: if manager(orgId) || (signedIn() && resource.data.ownerUid == request.auth.uid);
 
       match /members/{uid} {
         allow read: if member(orgId);
@@ -30,10 +30,13 @@ service cloud.firestore {
               && request.resource.data.level == 'owner')
           || (signedIn()
               && request.auth.uid == uid
+              && request.resource.data.level == 'member'
               && request.resource.data.inviteToken is string
               && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken))
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.status == 'pending'
               && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.orgId == orgId
-              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.email == request.auth.token.email);
+              && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.email == request.auth.token.email
+              && request.resource.data.role == get(/databases/$(database)/documents/invites/$(request.resource.data.inviteToken)).data.role);
         allow update, delete: if manager(orgId);
       }
 
@@ -59,9 +62,17 @@ service cloud.firestore {
     }
 
     match /invites/{token} {
-      allow create: if signedIn() && manager(request.resource.data.orgId);
+      allow create: if signedIn() && manager(request.resource.data.orgId)
+                    && request.resource.data.status == 'pending';
       allow read: if signedIn() && (manager(resource.data.orgId) || resource.data.email == request.auth.token.email);
-      allow update: if signedIn() && (manager(resource.data.orgId) || resource.data.email == request.auth.token.email);
+      allow update: if signedIn() && (
+        manager(resource.data.orgId)
+        || (resource.data.email == request.auth.token.email
+            && resource.data.status == 'pending'
+            && request.resource.data.status == 'accepted'
+            && request.resource.data.acceptedBy == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedBy', 'acceptedAt']))
+      );
       allow delete: if signedIn() && manager(resource.data.orgId);
     }
   }
