@@ -3,20 +3,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application android:allowBackup="true" android:fullBackupContent="true" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/AppTheme" android:usesCleartextTraffic="false">
-        <activity android:name=".MainActivityStable" android:exported="true" android:screenOrientation="portrait">
+        <activity android:name=".MainActivityV154" android:exported="true" android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".MainActivityStable" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" android:exported="false" android:screenOrientation="portrait" />
-        <activity android:name=".InviteActivity" android:exported="true" android:screenOrientation="portrait">
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="yap-todo-alpcan.firebaseapp.com" android:pathPrefix="/__/auth/links" />
-            </intent-filter>
-        </activity>
+        <activity android:name=".InviteActivity" android:exported="false" android:screenOrientation="portrait" />
     </application>
 </manifest>
