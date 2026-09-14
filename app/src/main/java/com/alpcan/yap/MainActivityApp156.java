@@ -1,9 +1,13 @@
 package com.alpcan.yap;
 
 import android.content.Intent;
+import android.net.Uri;
 import android.view.View;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
@@ -14,6 +18,8 @@ import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.SetOptions;
 
+import org.json.JSONObject;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,46 +29,115 @@ public class MainActivityApp156 extends MainActivityV155 {
     @Override
     public void setContentView(View view) {
         super.setContentView(view);
-        if (view instanceof WebView) {
-            appWeb = (WebView) view;
-            appWeb.addJavascriptInterface(new App156Bridge(), "App156Native");
-            int[] delays = new int[]{1200, 2200, 3400, 5000};
-            for (int delay : delays) appWeb.postDelayed(() -> inject156(appWeb), delay);
-        }
+        if (!(view instanceof WebView)) return;
+
+        appWeb = (WebView) view;
+        appWeb.addJavascriptInterface(new App156Bridge(), "App156Native");
+        appWeb.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+        appWeb.clearCache(true);
+
+        appWeb.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return handleUrl(request == null ? null : request.getUrl());
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return handleUrl(url == null ? null : Uri.parse(url));
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                installTeamUi158(view);
+                injectCurrentUser158(view);
+            }
+        });
     }
 
-    private void inject156(WebView web) {
+    private boolean handleUrl(Uri uri) {
+        if (uri == null) return false;
+        if ("yap".equalsIgnoreCase(uri.getScheme()) && "logout".equalsIgnoreCase(uri.getHost())) {
+            logoutToGate();
+            return true;
+        }
+        return false;
+    }
+
+    private void installTeamUi158(WebView web) {
         if (web == null) return;
         String js = "(function(){"
-                + "if(window.__yapApp157)return;"
-                + "if(typeof renderTeam!=='function'||!document.getElementById('profileSheet'))return;"
-                + "window.__yapApp157=true;"
-                + "var oldRender=renderTeam;"
-                + "renderTeam=function(){oldRender();setTimeout(function(){"
+                + "window.__yapInvite154=true;"
+                + "window.__decorateTeam158=function(){try{"
                 + "var inviteCards=document.querySelectorAll('#inviteList .invite');"
                 + "var invites=(typeof state!=='undefined'&&state&&Array.isArray(state.invites))?state.invites:[];"
-                + "for(var i=0;i<inviteCards.length;i++){var inv=invites[i];if(!inv||!inv.id)continue;"
-                + "if(inviteCards[i].querySelector('.cancelInvite157'))continue;"
-                + "var irow=document.createElement('div');irow.style.marginTop='10px';"
-                + "var ibtn=document.createElement('button');ibtn.className='chip cancelInvite157';ibtn.style.color='#fb7185';ibtn.textContent='İptal Et';"
-                + "ibtn.onclick=(function(x){return function(){if(confirm('Bu davet iptal edilsin mi?'))App156Native.cancelInvite(x.id);};})(inv);"
-                + "irow.appendChild(ibtn);inviteCards[i].appendChild(irow);"
+                + "for(var i=0;i<inviteCards.length;i++){var inv=invites[i];if(!inv||!inv.id)continue;var card=inviteCards[i];"
+                + "if(card.querySelector('.inviteActions158'))continue;"
+                + "var row=document.createElement('div');row.className='inviteActions158';row.style.marginTop='10px';row.style.display='flex';row.style.gap='8px';row.style.flexWrap='wrap';"
+                + "var share=document.createElement('button');share.className='chip';share.textContent='Paylaş';share.onclick=(function(x){return function(){if(window.InviteNative){InviteNative.share(x.id,x.email||'',x.role||'Çalışan');}};})(inv);row.appendChild(share);"
+                + "var cancel=document.createElement('button');cancel.className='chip';cancel.style.color='#fb7185';cancel.textContent='İptal Et';cancel.onclick=(function(x){return function(){if(confirm('Bu davet iptal edilsin mi?'))App156Native.cancelInvite(x.id);};})(inv);row.appendChild(cancel);card.appendChild(row);"
                 + "}"
                 + "var memberCards=document.querySelectorAll('#memberList .member');"
                 + "var members=(typeof state!=='undefined'&&state&&Array.isArray(state.members))?state.members:[];"
-                + "for(var j=0;j<memberCards.length;j++){var m=members[j];if(!m||!m.uid||m.level==='owner')continue;"
-                + "if(memberCards[j].querySelector('.removeMember157'))continue;"
-                + "var mrow=document.createElement('div');mrow.style.marginTop='10px';"
-                + "var mbtn=document.createElement('button');mbtn.className='chip removeMember157';mbtn.style.color='#fb7185';mbtn.textContent='Ekipten Çıkar';"
-                + "mbtn.onclick=(function(x){return function(){var n=x.name||x.email||'Bu kişi';if(confirm(n+' ekipten çıkarılsın mı?'))App156Native.removeMember(x.uid);};})(m);"
-                + "mrow.appendChild(mbtn);memberCards[j].appendChild(mrow);"
+                + "for(var j=0;j<memberCards.length;j++){var m=members[j];if(!m||!m.uid||m.level==='owner')continue;var mcard=memberCards[j];"
+                + "if(mcard.querySelector('.memberActions158'))continue;"
+                + "var mrow=document.createElement('div');mrow.className='memberActions158';mrow.style.marginTop='10px';"
+                + "var remove=document.createElement('button');remove.className='chip';remove.style.color='#fb7185';remove.textContent='Ekipten Çıkar';remove.onclick=(function(x){return function(){var n=x.name||x.email||'Bu kişi';if(confirm(n+' ekipten çıkarılsın mı?'))App156Native.removeMember(x.uid);};})(m);mrow.appendChild(remove);mcard.appendChild(mrow);"
                 + "}"
-                + "}},0);};"
-                + "var logout=document.querySelector('#profileSheet .danger');"
-                + "if(logout){logout.onclick=function(){App156Native.logout();};}"
-                + "try{renderTeam();}catch(e){}"
+                + "}catch(e){}};"
+                + "if(!window.__yapRender158&&typeof window.renderTeam==='function'){window.__yapRender158=true;var baseRenderTeam158=window.renderTeam;window.renderTeam=function(){baseRenderTeam158();setTimeout(window.__decorateTeam158,0);};}"
+                + "setTimeout(window.__decorateTeam158,0);"
+                + "var logout=document.querySelector('#profileSheet .danger');if(logout){logout.onclick=function(){App156Native.logout();};}"
                 + "})();";
         web.evaluateJavascript(js, null);
+    }
+
+    private void injectCurrentUser158(WebView web) {
+        FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        if (user == null || web == null) {
+            logoutToGate();
+            return;
+        }
+
+        db.collection("users").document(user.getUid()).get().addOnSuccessListener(profile -> {
+            String orgId = profile.getString("activeOrgId");
+            if (orgId == null) orgId = "";
+            String finalOrgId = orgId;
+
+            if (finalOrgId.isEmpty()) {
+                pushUserToWeb(web, user, "", "", "");
+                return;
+            }
+
+            db.collection("orgs").document(finalOrgId).collection("members").document(user.getUid()).get()
+                    .addOnSuccessListener(member -> pushUserToWeb(
+                            web,
+                            user,
+                            finalOrgId,
+                            member.getString("level"),
+                            member.getString("role")))
+                    .addOnFailureListener(e -> pushUserToWeb(web, user, finalOrgId, "", ""));
+        }).addOnFailureListener(e -> pushUserToWeb(web, user, "", "", ""));
+    }
+
+    private void pushUserToWeb(WebView web, FirebaseUser user, String orgId, String level, String role) {
+        JSONObject data = new JSONObject();
+        try {
+            data.put("loggedIn", true);
+            data.put("uid", user.getUid());
+            data.put("email", user.getEmail() == null ? "" : user.getEmail());
+            data.put("name", user.getDisplayName() == null ? "" : user.getDisplayName());
+            data.put("photo", user.getPhotoUrl() == null ? "" : user.getPhotoUrl().toString());
+            data.put("orgId", orgId == null ? "" : orgId);
+            data.put("level", level == null ? "" : level);
+            data.put("role", role == null ? "" : role);
+        } catch (Exception ignored) {}
+
+        String script = "window.setNativeUser&&window.setNativeUser(" + data + ");"
+                + "setTimeout(function(){if(window.__decorateTeam158)window.__decorateTeam158();},250);";
+        web.post(() -> web.evaluateJavascript(script, null));
     }
 
     public class App156Bridge {
@@ -88,6 +163,7 @@ public class MainActivityApp156 extends MainActivityV155 {
             toast("Davet kodu geçersiz.");
             return;
         }
+
         FirebaseAuth auth = FirebaseAuth.getInstance();
         FirebaseFirestore db = FirebaseFirestore.getInstance();
         FirebaseUser user = auth.getCurrentUser();
@@ -96,16 +172,19 @@ public class MainActivityApp156 extends MainActivityV155 {
         db.collection("users").document(user.getUid()).get().addOnSuccessListener(profile -> {
             String orgId = profile.getString("activeOrgId");
             if (orgId == null || orgId.isEmpty()) { toast("Aktif şirket bulunamadı."); return; }
+
             db.collection("orgs").document(orgId).collection("members").document(user.getUid()).get()
                     .addOnSuccessListener(member -> {
                         String level = member.getString("level");
                         boolean manager = "owner".equals(level) || "admin".equals(level);
                         if (!manager) { toast("Bu işlem için yönetici yetkisi gerekiyor."); return; }
+
                         db.collection("invites").document(clean).get().addOnSuccessListener(invite -> {
                             if (!invite.exists()) { toast("Davet bulunamadı."); return; }
                             String inviteOrg = invite.getString("orgId");
                             if (!orgId.equals(inviteOrg)) { toast("Bu davet başka bir şirkete ait."); return; }
-                            if (!"pending".equals(invite.getString("status"))) { toast("Bu davet artık beklemede değil."); return; }
+                            if (!"pending".equals(invite.getString("status"))) { toast("Bu davet artık beklemede değil."); removeInviteFromUi(clean); return; }
+
                             Map<String, Object> patch = new HashMap<>();
                             patch.put("status", "revoked");
                             patch.put("revokedBy", user.getUid());
@@ -124,8 +203,9 @@ public class MainActivityApp156 extends MainActivityV155 {
 
     private void removeInviteFromUi(String code) {
         if (appWeb == null) return;
+        String safeCode = code == null ? "" : code.replace("'", "");
         String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.invites)){"
-                + "state.invites=state.invites.filter(function(x){return String(x.id||'')!=='" + code + "';});"
+                + "state.invites=state.invites.filter(function(x){return String(x.id||'')!=='" + safeCode + "';});"
                 + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
                 + "if(window.YapNative){YapNative.loadState();}";
         appWeb.post(() -> appWeb.evaluateJavascript(js, null));
@@ -160,7 +240,7 @@ public class MainActivityApp156 extends MainActivityV155 {
 
                         db.collection("orgs").document(orgId).collection("members").document(targetUid).get()
                                 .addOnSuccessListener(target -> {
-                                    if (!target.exists()) { toast("Ekip üyesi bulunamadı."); return; }
+                                    if (!target.exists()) { toast("Ekip üyesi bulunamadı."); removeMemberFromUi(targetUid); return; }
                                     String targetLevel = target.getString("level");
                                     if ("owner".equals(targetLevel)) {
                                         toast("Kurucu yönetici ekipten çıkarılamaz.");
@@ -186,7 +266,7 @@ public class MainActivityApp156 extends MainActivityV155 {
 
     private void removeMemberFromUi(String uid) {
         if (appWeb == null) return;
-        String safeUid = uid.replace("'", "");
+        String safeUid = uid == null ? "" : uid.replace("'", "");
         String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.members)){"
                 + "state.members=state.members.filter(function(x){return String(x.uid||'')!=='" + safeUid + "';});"
                 + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
@@ -199,9 +279,11 @@ public class MainActivityApp156 extends MainActivityV155 {
         try {
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestIdToken(getString(R.string.default_web_client_id))
-                    .requestEmail().build();
+                    .requestEmail()
+                    .build();
             GoogleSignIn.getClient(this, gso).signOut();
         } catch (Exception ignored) {}
+
         Intent i = new Intent(this, MainActivityV156.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         startActivity(i);
