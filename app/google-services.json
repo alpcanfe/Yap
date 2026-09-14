@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "72815265035-b3athve3kai1jkbsbtopm1buoui9bdc5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.alpcan.yap",
+            "certificate_hash": "bb9f5f095982f7c81626fa664ad1592945874c86"
+          }
+        },
+        {
           "client_id": "72815265035-od3ob479j1qta67d89oj8imdpfiokge0.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
