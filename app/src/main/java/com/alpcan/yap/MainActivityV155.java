@@ -1,6 +1,9 @@
 package com.alpcan.yap;
 
+import android.graphics.Insets;
+import android.os.Build;
 import android.view.View;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.widget.Toast;
@@ -15,11 +18,49 @@ public class MainActivityV155 extends MainActivityV154 {
     @Override
     public void setContentView(View view) {
         super.setContentView(view);
+        applyResponsiveSafeArea(view);
         if (view instanceof WebView) {
             currentWeb = (WebView) view;
             currentWeb.addJavascriptInterface(new InviteBridge155(), "InviteNative155");
             scheduleFix(currentWeb);
         }
+    }
+
+    private void applyResponsiveSafeArea(View root) {
+        if (root == null) return;
+        final int baseLeft = root.getPaddingLeft();
+        final int baseTop = root.getPaddingTop();
+        final int baseRight = root.getPaddingRight();
+        final int baseBottom = root.getPaddingBottom();
+
+        root.setOnApplyWindowInsetsListener((v, windowInsets) -> {
+            int left;
+            int top;
+            int right;
+            int bottom;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets safe = windowInsets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                left = safe.left;
+                top = safe.top;
+                right = safe.right;
+                bottom = safe.bottom;
+            } else {
+                left = windowInsets.getSystemWindowInsetLeft();
+                top = windowInsets.getSystemWindowInsetTop();
+                right = windowInsets.getSystemWindowInsetRight();
+                bottom = windowInsets.getSystemWindowInsetBottom();
+            }
+
+            v.setPadding(
+                    baseLeft + left,
+                    baseTop + top,
+                    baseRight + right,
+                    baseBottom + bottom);
+            return windowInsets;
+        });
+        root.requestApplyInsets();
     }
 
     private void scheduleFix(WebView web) {
