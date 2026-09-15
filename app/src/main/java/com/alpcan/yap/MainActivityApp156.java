@@ -14,14 +14,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.firestore.FieldValue;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
-import com.google.firebase.firestore.SetOptions;
+import com.google.firebase.firestore.WriteBatch;
 
 import org.json.JSONObject;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Locale;
 
 public class MainActivityApp156 extends MainActivityV155 {
     private WebView appWeb;
@@ -180,28 +179,69 @@ public class MainActivityApp156 extends MainActivityV155 {
                         if (!manager) { toast("Bu işlem için yönetici yetkisi gerekiyor."); return; }
 
                         db.collection("invites").document(clean).get().addOnSuccessListener(invite -> {
-                            if (!invite.exists()) { toast("Davet bulunamadı."); return; }
+                            if (!invite.exists()) {
+                                toast("Davet bulunamadı.");
+                                removeInviteFromUiByCode(clean);
+                                return;
+                            }
+
                             String inviteOrg = invite.getString("orgId");
                             if (!orgId.equals(inviteOrg)) { toast("Bu davet başka bir şirkete ait."); return; }
-                            if (!"pending".equals(invite.getString("status"))) { toast("Bu davet artık beklemede değil."); removeInviteFromUi(clean); return; }
 
-                            Map<String, Object> patch = new HashMap<>();
-                            patch.put("status", "revoked");
-                            patch.put("revokedBy", user.getUid());
-                            patch.put("revokedAt", FieldValue.serverTimestamp());
-                            db.collection("invites").document(clean).set(patch, SetOptions.merge())
-                                    .addOnSuccessListener(v -> {
-                                        toast("Davet iptal edildi.");
-                                        removeInviteFromUi(clean);
+                            String invitedEmail = invite.getString("email") == null
+                                    ? ""
+                                    : invite.getString("email").trim().toLowerCase(Locale.ROOT);
+
+                            db.collection("invites").whereEqualTo("orgId", orgId).get()
+                                    .addOnSuccessListener(allInvites -> {
+                                        WriteBatch batch = db.batch();
+                                        int deleteCount = 0;
+
+                                        for (DocumentSnapshot doc : allInvites.getDocuments()) {
+                                            String status = doc.getString("status");
+                                            String email = doc.getString("email") == null
+                                                    ? ""
+                                                    : doc.getString("email").trim().toLowerCase(Locale.ROOT);
+
+                                            if ("pending".equals(status) && invitedEmail.equals(email)) {
+                                                batch.delete(doc.getReference());
+                                                deleteCount++;
+                                            }
+                                        }
+
+                                        if (deleteCount == 0) {
+                                            removeInvitesForEmailFromUi(invitedEmail);
+                                            toast("Bekleyen davet zaten kaldırılmış.");
+                                            return;
+                                        }
+
+                                        batch.commit()
+                                                .addOnSuccessListener(v -> {
+                                                    removeInvitesForEmailFromUi(invitedEmail);
+                                                    toast("Davet iptal edildi ve bekleyenlerden tamamen kaldırıldı.");
+                                                })
+                                                .addOnFailureListener(e -> toast("Davet sistemden silinemedi."));
                                     })
-                                    .addOnFailureListener(e -> toast("Davet iptal edilemedi."));
+                                    .addOnFailureListener(e -> toast("Bekleyen davetler okunamadı."));
                         }).addOnFailureListener(e -> toast("Davet bilgisi okunamadı."));
                     })
                     .addOnFailureListener(e -> toast("Yönetici bilgisi okunamadı."));
         }).addOnFailureListener(e -> toast("Şirket profili okunamadı."));
     }
 
-    private void removeInviteFromUi(String code) {
+    private void removeInvitesForEmailFromUi(String email) {
+        if (appWeb == null) return;
+        String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
+        String quotedEmail = JSONObject.quote(normalized);
+        String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.invites)){"
+                + "var target=" + quotedEmail + ";"
+                + "state.invites=state.invites.filter(function(x){return String(x.email||'').trim().toLowerCase()!==target;});"
+                + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
+                + "if(window.YapNative){YapNative.loadState();}";
+        appWeb.post(() -> appWeb.evaluateJavascript(js, null));
+    }
+
+    private void removeInviteFromUiByCode(String code) {
         if (appWeb == null) return;
         String safeCode = code == null ? "" : code.replace("'", "");
         String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.invites)){"
