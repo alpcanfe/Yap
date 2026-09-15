@@ -75,7 +75,7 @@ public class MainActivityApp156 extends MainActivityV155 {
                 + "if(card.querySelector('.inviteActions158'))continue;"
                 + "var row=document.createElement('div');row.className='inviteActions158';row.style.marginTop='10px';row.style.display='flex';row.style.gap='8px';row.style.flexWrap='wrap';"
                 + "var share=document.createElement('button');share.className='chip';share.textContent='Paylaş';share.onclick=(function(x){return function(){if(window.InviteNative){InviteNative.share(x.id,x.email||'',x.role||'Çalışan');}};})(inv);row.appendChild(share);"
-                + "var cancel=document.createElement('button');cancel.className='chip';cancel.style.color='#fb7185';cancel.textContent='İptal Et';cancel.onclick=(function(x){return function(){if(confirm('Bu davet iptal edilsin mi?'))App156Native.cancelInvite(x.id);};})(inv);row.appendChild(cancel);card.appendChild(row);"
+                + "var cancel=document.createElement('button');cancel.className='chip';cancel.style.color='#fb7185';cancel.textContent='İptal Et';cancel.onclick=(function(x){return function(){if(confirm('Bu davet iptal edilsin mi?'))App156Native.cancelInvite(x.id,x.email||'');};})(inv);row.appendChild(cancel);card.appendChild(row);"
                 + "}"
                 + "var memberCards=document.querySelectorAll('#memberList .member');"
                 + "var members=(typeof state!=='undefined'&&state&&Array.isArray(state.members))?state.members:[];"
@@ -141,8 +141,8 @@ public class MainActivityApp156 extends MainActivityV155 {
 
     public class App156Bridge {
         @JavascriptInterface
-        public void cancelInvite(String code) {
-            runOnUiThread(() -> cancelInviteNative(code));
+        public void cancelInvite(String inviteId, String email) {
+            runOnUiThread(() -> cancelInviteNative(inviteId, email));
         }
 
         @JavascriptInterface
@@ -156,10 +156,11 @@ public class MainActivityApp156 extends MainActivityV155 {
         }
     }
 
-    private void cancelInviteNative(String code) {
-        String clean = InviteCodeService.clean(code);
-        if (clean.length() != 10) {
-            toast("Davet kodu geçersiz.");
+    private void cancelInviteNative(String inviteId, String emailFromUi) {
+        String rawId = inviteId == null ? "" : inviteId.trim();
+        String requestedEmail = emailFromUi == null ? "" : emailFromUi.trim().toLowerCase(Locale.ROOT);
+        if (rawId.isEmpty() && requestedEmail.isEmpty()) {
+            toast("Davet bilgisi bulunamadı.");
             return;
         }
 
@@ -178,76 +179,68 @@ public class MainActivityApp156 extends MainActivityV155 {
                         boolean manager = "owner".equals(level) || "admin".equals(level);
                         if (!manager) { toast("Bu işlem için yönetici yetkisi gerekiyor."); return; }
 
-                        db.collection("invites").document(clean).get().addOnSuccessListener(invite -> {
-                            if (!invite.exists()) {
-                                toast("Davet bulunamadı.");
-                                removeInviteFromUiByCode(clean);
-                                return;
-                            }
+                        db.collection("invites").whereEqualTo("orgId", orgId).get()
+                                .addOnSuccessListener(allInvites -> {
+                                    WriteBatch batch = db.batch();
+                                    int deleteCount = 0;
+                                    String resolvedEmail = requestedEmail;
 
-                            String inviteOrg = invite.getString("orgId");
-                            if (!orgId.equals(inviteOrg)) { toast("Bu davet başka bir şirkete ait."); return; }
-
-                            String invitedEmail = invite.getString("email") == null
-                                    ? ""
-                                    : invite.getString("email").trim().toLowerCase(Locale.ROOT);
-
-                            db.collection("invites").whereEqualTo("orgId", orgId).get()
-                                    .addOnSuccessListener(allInvites -> {
-                                        WriteBatch batch = db.batch();
-                                        int deleteCount = 0;
-
+                                    if (resolvedEmail.isEmpty()) {
                                         for (DocumentSnapshot doc : allInvites.getDocuments()) {
-                                            String status = doc.getString("status");
-                                            String email = doc.getString("email") == null
-                                                    ? ""
-                                                    : doc.getString("email").trim().toLowerCase(Locale.ROOT);
-
-                                            if ("pending".equals(status) && invitedEmail.equals(email)) {
-                                                batch.delete(doc.getReference());
-                                                deleteCount++;
+                                            if (doc.getId().equals(rawId)) {
+                                                String e = doc.getString("email");
+                                                if (e != null) resolvedEmail = e.trim().toLowerCase(Locale.ROOT);
+                                                break;
                                             }
                                         }
+                                    }
 
-                                        if (deleteCount == 0) {
-                                            removeInvitesForEmailFromUi(invitedEmail);
-                                            toast("Bekleyen davet zaten kaldırılmış.");
-                                            return;
+                                    for (DocumentSnapshot doc : allInvites.getDocuments()) {
+                                        String status = doc.getString("status");
+                                        String docEmail = doc.getString("email") == null
+                                                ? ""
+                                                : doc.getString("email").trim().toLowerCase(Locale.ROOT);
+
+                                        boolean sameId = !rawId.isEmpty() && doc.getId().equals(rawId);
+                                        boolean sameEmail = !resolvedEmail.isEmpty() && resolvedEmail.equals(docEmail);
+                                        if ((sameId || sameEmail) && ("pending".equals(status) || status == null || status.isEmpty())) {
+                                            batch.delete(doc.getReference());
+                                            deleteCount++;
                                         }
+                                    }
 
-                                        batch.commit()
-                                                .addOnSuccessListener(v -> {
-                                                    removeInvitesForEmailFromUi(invitedEmail);
-                                                    toast("Davet iptal edildi ve bekleyenlerden tamamen kaldırıldı.");
-                                                })
-                                                .addOnFailureListener(e -> toast("Davet sistemden silinemedi."));
-                                    })
-                                    .addOnFailureListener(e -> toast("Bekleyen davetler okunamadı."));
-                        }).addOnFailureListener(e -> toast("Davet bilgisi okunamadı."));
+                                    final String finalEmail = resolvedEmail;
+                                    if (deleteCount == 0) {
+                                        removeInviteFromUi(rawId, finalEmail);
+                                        toast("Davet bekleyen listesinden kaldırıldı.");
+                                        return;
+                                    }
+
+                                    batch.commit()
+                                            .addOnSuccessListener(v -> {
+                                                removeInviteFromUi(rawId, finalEmail);
+                                                toast("Davet iptal edildi ve listeden silindi.");
+                                            })
+                                            .addOnFailureListener(e -> toast("Davet sistemden silinemedi."));
+                                })
+                                .addOnFailureListener(e -> toast("Bekleyen davetler okunamadı."));
                     })
                     .addOnFailureListener(e -> toast("Yönetici bilgisi okunamadı."));
         }).addOnFailureListener(e -> toast("Şirket profili okunamadı."));
     }
 
-    private void removeInvitesForEmailFromUi(String email) {
+    private void removeInviteFromUi(String inviteId, String email) {
         if (appWeb == null) return;
-        String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
-        String quotedEmail = JSONObject.quote(normalized);
+        String quotedId = JSONObject.quote(inviteId == null ? "" : inviteId.trim());
+        String quotedEmail = JSONObject.quote(email == null ? "" : email.trim().toLowerCase(Locale.ROOT));
         String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.invites)){"
-                + "var target=" + quotedEmail + ";"
-                + "state.invites=state.invites.filter(function(x){return String(x.email||'').trim().toLowerCase()!==target;});"
-                + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
-                + "if(window.YapNative){YapNative.loadState();}";
-        appWeb.post(() -> appWeb.evaluateJavascript(js, null));
-    }
-
-    private void removeInviteFromUiByCode(String code) {
-        if (appWeb == null) return;
-        String safeCode = code == null ? "" : code.replace("'", "");
-        String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.invites)){"
-                + "state.invites=state.invites.filter(function(x){return String(x.id||'')!=='" + safeCode + "';});"
-                + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
-                + "if(window.YapNative){YapNative.loadState();}";
+                + "var targetId=" + quotedId + ";var targetEmail=" + quotedEmail + ";"
+                + "state.invites=state.invites.filter(function(x){"
+                + "var xid=String(x.id||'').trim();var xmail=String(x.email||'').trim().toLowerCase();"
+                + "return !((targetId&&xid===targetId)||(targetEmail&&xmail===targetEmail));});"
+                + "if(typeof renderTeam==='function')renderTeam();"
+                + "setTimeout(function(){if(window.__decorateTeam158)window.__decorateTeam158();},0);"
+                + "}}catch(e){}";
         appWeb.post(() -> appWeb.evaluateJavascript(js, null));
     }
 
