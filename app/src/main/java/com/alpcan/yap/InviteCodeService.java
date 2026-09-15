@@ -6,6 +6,7 @@ import android.content.Intent;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FieldValue;
 import com.google.firebase.firestore.FirebaseFirestore;
 import com.google.firebase.firestore.SetOptions;
@@ -67,13 +68,29 @@ public final class InviteCodeService {
         data.put("createdAt", FieldValue.serverTimestamp());
         data.put("expiresAtMillis", System.currentTimeMillis() + VALID_MS);
         String finalRole = r;
-        db.collection("invites").document(c).set(data)
-                .addOnSuccessListener(v -> {
-                    cb.notice("success", "Davet kodu oluşturuldu: " + display(c));
-                    cb.refresh();
-                    share(activity, c, mail, finalRole);
+
+        db.collection("invites").whereEqualTo("orgId", orgId).get()
+                .addOnSuccessListener(existing -> {
+                    WriteBatch batch = db.batch();
+                    for (DocumentSnapshot doc : existing.getDocuments()) {
+                        String status = doc.getString("status");
+                        String oldMail = doc.getString("email") == null
+                                ? ""
+                                : doc.getString("email").trim().toLowerCase(Locale.ROOT);
+                        if ("pending".equals(status) && mail.equals(oldMail)) {
+                            batch.delete(doc.getReference());
+                        }
+                    }
+                    batch.set(db.collection("invites").document(c), data);
+                    batch.commit()
+                            .addOnSuccessListener(v -> {
+                                cb.notice("success", "Davet kodu oluşturuldu: " + display(c));
+                                cb.refresh();
+                                share(activity, c, mail, finalRole);
+                            })
+                            .addOnFailureListener(e -> cb.notice("error", e.getMessage() == null ? "Davet oluşturulamadı." : e.getMessage()));
                 })
-                .addOnFailureListener(e -> cb.notice("error", e.getMessage() == null ? "Davet oluşturulamadı." : e.getMessage()));
+                .addOnFailureListener(e -> cb.notice("error", "Eski bekleyen davetler kontrol edilemedi."));
     }
 
     public static void accept(FirebaseAuth auth, FirebaseFirestore db, String raw, Callback cb) {
