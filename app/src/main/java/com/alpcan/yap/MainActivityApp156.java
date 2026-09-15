@@ -84,6 +84,12 @@ public class MainActivityApp156 extends MainActivityV155 {
                 + "var mrow=document.createElement('div');mrow.className='memberActions158';mrow.style.marginTop='10px';"
                 + "var remove=document.createElement('button');remove.className='chip';remove.style.color='#fb7185';remove.textContent='Ekipten Çıkar';remove.onclick=(function(x){return function(){var n=x.name||x.email||'Bu kişi';if(confirm(n+' ekipten çıkarılsın mı?'))App156Native.removeMember(x.uid);};})(m);mrow.appendChild(remove);mcard.appendChild(mrow);"
                 + "}"
+                + "var roleBadges=document.querySelectorAll('#roleList .badge');"
+                + "var roles=(typeof state!=='undefined'&&state&&Array.isArray(state.roles))?state.roles:[];"
+                + "for(var r=0;r<roleBadges.length;r++){var badge=roleBadges[r];if(badge.querySelector('.roleDelete158'))continue;var label=(badge.textContent||'').trim();if(label==='Çalışan')continue;var roleObj=null;for(var q=0;q<roles.length;q++){if(String(roles[q].name||'').trim()===label){roleObj=roles[q];break;}}if(!roleObj||!roleObj.id)continue;"
+                + "badge.style.display='inline-flex';badge.style.alignItems='center';badge.style.gap='7px';"
+                + "var x=document.createElement('button');x.className='roleDelete158';x.type='button';x.textContent='×';x.setAttribute('aria-label',label+' rolünü sil');x.style.border='0';x.style.background='transparent';x.style.color='#fb7185';x.style.fontSize='17px';x.style.fontWeight='900';x.style.lineHeight='1';x.style.padding='0 1px';x.style.cursor='pointer';x.onclick=(function(ro){return function(ev){ev.preventDefault();ev.stopPropagation();if(confirm(ro.name+' rolü silinsin mi? Bu role atanmış kişiler ve bekleyen davetler Çalışan rolüne alınacak.'))App156Native.deleteRole(ro.id,ro.name||'');};})(roleObj);badge.appendChild(x);"
+                + "}"
                 + "}catch(e){}};"
                 + "if(!window.__yapRender158&&typeof window.renderTeam==='function'){window.__yapRender158=true;var baseRenderTeam158=window.renderTeam;window.renderTeam=function(){baseRenderTeam158();setTimeout(window.__decorateTeam158,0);};}"
                 + "setTimeout(window.__decorateTeam158,0);"
@@ -148,6 +154,11 @@ public class MainActivityApp156 extends MainActivityV155 {
         @JavascriptInterface
         public void removeMember(String uid) {
             runOnUiThread(() -> removeMemberNative(uid));
+        }
+
+        @JavascriptInterface
+        public void deleteRole(String roleId, String roleName) {
+            runOnUiThread(() -> deleteRoleNative(roleId, roleName));
         }
 
         @JavascriptInterface
@@ -304,6 +315,93 @@ public class MainActivityApp156 extends MainActivityV155 {
                 + "state.members=state.members.filter(function(x){return String(x.uid||'')!=='" + safeUid + "';});"
                 + "if(typeof renderTeam==='function')renderTeam();}}catch(e){}"
                 + "if(window.YapNative){YapNative.loadState();}";
+        appWeb.post(() -> appWeb.evaluateJavascript(js, null));
+    }
+
+    private void deleteRoleNative(String roleId, String roleName) {
+        String id = roleId == null ? "" : roleId.trim();
+        String name = roleName == null ? "" : roleName.trim();
+        if (id.isEmpty() || name.isEmpty()) {
+            toast("Rol bilgisi bulunamadı.");
+            return;
+        }
+        if ("Çalışan".equalsIgnoreCase(name)) {
+            toast("Çalışan rolü sistem rolüdür ve silinemez.");
+            return;
+        }
+
+        FirebaseAuth auth = FirebaseAuth.getInstance();
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+        FirebaseUser user = auth.getCurrentUser();
+        if (user == null) { logoutToGate(); return; }
+
+        db.collection("users").document(user.getUid()).get().addOnSuccessListener(profile -> {
+            String orgId = profile.getString("activeOrgId");
+            if (orgId == null || orgId.isEmpty()) { toast("Aktif şirket bulunamadı."); return; }
+
+            db.collection("orgs").document(orgId).collection("members").document(user.getUid()).get()
+                    .addOnSuccessListener(requester -> {
+                        String level = requester.getString("level");
+                        boolean manager = "owner".equals(level) || "admin".equals(level);
+                        if (!manager) { toast("Bu işlem için yönetici yetkisi gerekiyor."); return; }
+
+                        db.collection("orgs").document(orgId).collection("roles").document(id).get()
+                                .addOnSuccessListener(roleDoc -> {
+                                    if (!roleDoc.exists()) {
+                                        removeRoleFromUi(id, name);
+                                        toast("Rol zaten silinmiş.");
+                                        return;
+                                    }
+
+                                    db.collection("orgs").document(orgId).collection("members").get()
+                                            .addOnSuccessListener(allMembers -> db.collection("invites").whereEqualTo("orgId", orgId).get()
+                                                    .addOnSuccessListener(allInvites -> {
+                                                        WriteBatch batch = db.batch();
+                                                        batch.delete(roleDoc.getReference());
+
+                                                        for (DocumentSnapshot member : allMembers.getDocuments()) {
+                                                            String memberRole = member.getString("role");
+                                                            if (name.equals(memberRole)) {
+                                                                batch.update(member.getReference(), "role", "Çalışan");
+                                                            }
+                                                        }
+
+                                                        for (DocumentSnapshot invite : allInvites.getDocuments()) {
+                                                            String status = invite.getString("status");
+                                                            String inviteRole = invite.getString("role");
+                                                            if ("pending".equals(status) && name.equals(inviteRole)) {
+                                                                batch.update(invite.getReference(), "role", "Çalışan");
+                                                            }
+                                                        }
+
+                                                        batch.commit()
+                                                                .addOnSuccessListener(v -> {
+                                                                    removeRoleFromUi(id, name);
+                                                                    toast("Rol silindi.");
+                                                                })
+                                                                .addOnFailureListener(e -> toast("Rol silinemedi."));
+                                                    })
+                                                    .addOnFailureListener(e -> toast("Bekleyen davetler okunamadı.")))
+                                            .addOnFailureListener(e -> toast("Ekip rolleri okunamadı."));
+                                })
+                                .addOnFailureListener(e -> toast("Rol bilgisi okunamadı."));
+                    })
+                    .addOnFailureListener(e -> toast("Yönetici bilgisi okunamadı."));
+        }).addOnFailureListener(e -> toast("Şirket profili okunamadı."));
+    }
+
+    private void removeRoleFromUi(String roleId, String roleName) {
+        if (appWeb == null) return;
+        String quotedId = JSONObject.quote(roleId == null ? "" : roleId.trim());
+        String quotedName = JSONObject.quote(roleName == null ? "" : roleName.trim());
+        String js = "try{if(typeof state!=='undefined'&&state&&Array.isArray(state.roles)){"
+                + "var rid=" + quotedId + ";var rn=" + quotedName + ";"
+                + "state.roles=state.roles.filter(function(x){return !(String(x.id||'')===rid||String(x.name||'')===rn);});"
+                + "if(Array.isArray(state.members)){state.members.forEach(function(m){if(String(m.role||'')===rn)m.role='Çalışan';});}"
+                + "if(Array.isArray(state.invites)){state.invites.forEach(function(i){if(String(i.role||'')===rn)i.role='Çalışan';});}"
+                + "if(typeof renderTeam==='function')renderTeam();if(typeof fillRoles==='function')fillRoles();if(typeof fillAssignees==='function')fillAssignees();"
+                + "setTimeout(function(){if(window.__decorateTeam158)window.__decorateTeam158();},0);"
+                + "}}catch(e){}";
         appWeb.post(() -> appWeb.evaluateJavascript(js, null));
     }
 
