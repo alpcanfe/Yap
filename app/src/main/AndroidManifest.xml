@@ -10,6 +10,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".NotificationCenterActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityApp156" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityV155" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivityV154" android:exported="false" android:screenOrientation="portrait" />
